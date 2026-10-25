@@ -164,31 +164,21 @@ def create_market_balance_chart(
         )
 
     elif indicator_name == "ADR":
-        # ADR 요구사항: "ADR 차트는 ADR(14)와 당일의 ADR, 즉 ADR(1)을 동시에 표시. 즉 주가지수와 함께 3개의 그래프를 합성 차트로 구현"
-        # 1. ADR(1): 당일의 등락비율 (변동성이 크므로 얇고 은은하게 표시)
-        if "adr_1" in df.columns:
-            fig.add_trace(
-                go.Scatter(
-                    x=df["date"],
-                    y=df["adr_1"],
-                    name="당일 ADR(1)",
-                    mode="lines",
-                    line=dict(color=meta.get("line_color_1", "rgba(148, 163, 184, 0.45)"), width=1.1),
-                    hovertemplate="당일 ADR(1): %{y:.1f}%<extra></extra>",
-                ),
-                secondary_y=True,
-            )
-
-        # 2. ADR(14): 14거래일 누적 등락비율 (핵심 추세선으로 부각)
+        # ADR(14): 14거래일 누적 등락비율 (핵심 추세선)
+        # 당일 ADR(1)의 극단적 일별 스파이크로 인한 Y축 왜곡을 방지하기 위해 차트 선은 ADR(14)만 단독 표시하고,
+        # 당일 ADR(1) 수치는 호버 툴팁 및 상단 KPI 카드에 온전히 보존
         if "adr_14" in df.columns:
+            has_adr1 = "adr_1" in df.columns
+            hover_tmpl = "<b>ADR(14): %{y:.1f}%</b>" + (" (당일 ADR: %{customdata:.1f}%)" if has_adr1 else "") + "<extra></extra>"
             fig.add_trace(
                 go.Scatter(
                     x=df["date"],
                     y=df["adr_14"],
+                    customdata=df["adr_1"] if has_adr1 else None,
                     name="ADR(14)",
                     mode="lines",
                     line=dict(color=meta.get("line_color_14", "#EC4899"), width=2.4),
-                    hovertemplate="<b>ADR(14): %{y:.1f}%</b><extra></extra>",
+                    hovertemplate=hover_tmpl,
                 ),
                 secondary_y=True,
             )

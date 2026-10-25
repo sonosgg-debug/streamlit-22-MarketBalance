@@ -97,11 +97,12 @@ INDICATOR_META = {
     },
     "ADR": {
         "name": "ADR (등락비율, Advance Decline Ratio)",
-        "short_name": "ADR(14) & ADR(1)",
+        "short_name": "ADR(14)",
         "chart_label": "ADR (%)",
         "unit": "%",
         "format": "{:.1f}%",
-        "desc": "하락 종목 수 대비 상승 종목 수의 비율로 시장의 실제 참여도와 체감 온도를 측정합니다. ADR(14)는 14일 누적 추세선(120% 이상 과열, 75% 이하 바닥권), ADR(1)은 당일 등락비율입니다.",
+        "desc": "하락 종목 수 대비 상승 종목 수의 비율로 시장의 실제 참여도와 체감 온도를 측정합니다. 차트에는 14일 누적 핵심 추세선인 ADR(14)(120% 이상 과열, 75% 이하 바닥권)을 표시하며, 당일의 일별 등락비율 ADR(1)은 상단 KPI 카드 및 차트 호버 툴팁에서 확인하실 수 있습니다.",
+        "line_color": "#EC4899",     # Rose Pink (ADR 14)
         "line_color_14": "#EC4899",  # Rose Pink (ADR 14)
         "line_color_1": "rgba(148, 163, 184, 0.45)",   # Slate 400 (ADR 1)
         "overbought": 120.0,
