@@ -1,0 +1,14 @@
+# Streamlit secrets (config.toml은 다크 테마 적용을 위해 git에 포함)
+.streamlit/secrets.toml
+!.streamlit/config.toml
+.streamlit_home/
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.env
+
+# OS artifacts
+.DS_Store
+Thumbs.db
