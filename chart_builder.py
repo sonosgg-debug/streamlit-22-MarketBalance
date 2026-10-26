@@ -442,14 +442,15 @@ def create_market_balance_chart(
         height=540,
     )
 
-    # 6. X축 설정 (날짜 포맷 정규화 및 레인지슬라이더 비활성화)
+    # 6. X축 설정 (비거래일(주말, 공휴일) 완전 배제 및 범주형(category) 축 적용)
+    # HTS/금융 차트 표준: 시장이 개장된 실제 거래일만 X축에 연속 배치하여 주말 및 공휴일 공백과 0값 표출을 원천 차단
     fig.update_xaxes(
+        type="category",
+        nticks=10,
+        rangeslider=dict(visible=False),
         gridcolor=STANDARD_CHART_THEME['grid_color'],
         linecolor=STANDARD_CHART_THEME['border_color'],
         tickfont=dict(color=STANDARD_CHART_THEME['text_muted'], size=11),
-        tickformat="%Y-%m-%d",
-        hoverformat="%Y-%m-%d",
-        rangeslider=dict(visible=False),
     )
 
     # 7. 좌측 Y축 (주가지수 일봉)
