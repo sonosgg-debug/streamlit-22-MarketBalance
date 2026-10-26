@@ -450,8 +450,12 @@ def get_market_balance_dataset(market_choice: str = "코스피 (KOSPI)", force_r
     if df_price.empty:
         return pd.DataFrame()
 
-    # 2. RSI(20) 계산
+    # 2. RSI(20) 및 이동평균선(MA 5, 20, 60, 120) 계산 (전체 시계열 기준 선행 계산)
     df_price["rsi_20"] = calculate_rsi(df_price["close"], period=20)
+    df_price["ma5"] = df_price["close"].rolling(window=5, min_periods=1).mean().round(2)
+    df_price["ma20"] = df_price["close"].rolling(window=20, min_periods=1).mean().round(2)
+    df_price["ma60"] = df_price["close"].rolling(window=60, min_periods=1).mean().round(2)
+    df_price["ma120"] = df_price["close"].rolling(window=120, min_periods=1).mean().round(2)
 
     # 3. PER, PBR 펀더멘털 병합
     df_fund = get_fundamentals_data(market=market, force_refresh=force_refresh)

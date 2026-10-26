@@ -24,11 +24,13 @@ def create_market_balance_chart(
     market_name: str,
     indicator_name: str,
     use_log_scale: bool = False,
+    show_ma_lines: bool = True,
     **kwargs
 ) -> go.Figure:
     """
-    주가지수와 선택된 보조지표를 단일 프레임에서 이중 Y축으로 합성한 고대비 차트를 생성합니다.
+    주가지수(일봉 캔들차트 + 5/20/60/120 이평선)와 선택된 보조지표를 단일 프레임에서 이중 Y축으로 합성한 고대비 차트를 생성합니다.
     - use_log_scale: True일 경우 좌측 주가지수 Y축을 로그 스케일(Logarithmic Scale)로 렌더링
+    - show_ma_lines: True일 경우 5, 20, 60, 120일 이동평균선을 좌측 Y축에 함께 오버레이
     """
     if df.empty:
         fig = go.Figure()
@@ -51,21 +53,55 @@ def create_market_balance_chart(
     # 1. 이중 Y축 서브플롯 생성
     fig = make_subplots(specs=[[{"secondary_y": True}]])
 
-    # 2. 주가지수 트레이스 (좌측 Primary Y축)
-    trace_market_name = f"{market_name} 지수" + (" (Log)" if use_log_scale else "")
+    # 2. 주가지수 일봉 캔들차트 트레이스 (좌측 Primary Y축)
+    trace_market_name = f"{market_name} 일봉" + (" (Log)" if use_log_scale else "")
+    c_open = df["open"] if "open" in df.columns else df["close"]
+    c_high = df["high"] if "high" in df.columns else df["close"]
+    c_low = df["low"] if "low" in df.columns else df["close"]
+    c_close = df["close"]
+
     fig.add_trace(
-        go.Scatter(
+        go.Candlestick(
             x=df["date"],
-            y=df["close"],
+            open=c_open,
+            high=c_high,
+            low=c_low,
+            close=c_close,
             name=trace_market_name,
-            mode="lines",
-            line=dict(color=INDEX_LINE_COLOR, width=2.2),
-            hovertemplate=f"{market_name} 종가: " + "%{y:,.2f}pt<extra></extra>",
+            increasing_line_color="#EF4444",      # 한국 증시 표준 양봉 (Red)
+            increasing_fillcolor="#EF4444",
+            decreasing_line_color="#3B82F6",      # 한국 증시 표준 음봉 (Blue)
+            decreasing_fillcolor="#3B82F6",
+            whiskerwidth=0.8,
+            hovertemplate="시 %{open:,.2f} | 고 %{high:,.2f} | 저 %{low:,.2f} | 종 %{close:,.2f}<extra></extra>",
+            showlegend=True,
         ),
         secondary_y=False,
     )
 
-    # 3. 보조지표 트레이스 (우측 Secondary Y축)
+    # 3. 이동평균선 트레이스 (5, 20, 60, 120일선)
+    if show_ma_lines:
+        ma_configs = [
+            ("ma5", "5일선", "#F59E0B", 1.2),     # Amber / Gold (단기)
+            ("ma20", "20일선", "#FB7185", 1.3),   # Rose / Pink (생명선)
+            ("ma60", "60일선", "#06B6D4", 1.3),   # Cyan (수급선)
+            ("ma120", "120일선", "#A855F7", 1.3), # Purple (경기선)
+        ]
+        for col, label, color, width in ma_configs:
+            if col in df.columns and df[col].notna().any():
+                fig.add_trace(
+                    go.Scatter(
+                        x=df["date"],
+                        y=df[col],
+                        name=label,
+                        mode="lines",
+                        line=dict(color=color, width=width),
+                        hovertemplate=f"{label}: %{{y:,.2f}}pt<extra></extra>",
+                    ),
+                    secondary_y=False,
+                )
+
+    # 4. 보조지표 트레이스 (우측 Secondary Y축)
     if indicator_name == "PER":
         per_series = df["per"].dropna()
         fig.add_trace(
@@ -372,7 +408,7 @@ def create_market_balance_chart(
 
     # 4. 차트 제목 생성
     scale_label = " [로그 스케일]" if use_log_scale else ""
-    chart_title_text = f"<b>{market_name} 지수 & {chart_indicator_label} 비교 차트{scale_label}</b>"
+    chart_title_text = f"<b>{market_name} 일봉 & {chart_indicator_label} 비교 차트{scale_label}</b>"
 
     # 5. [가이드 03] 표준 layout 설정
     fig.update_layout(
@@ -403,28 +439,32 @@ def create_market_balance_chart(
             font=dict(color=STANDARD_CHART_THEME['text_main'], size=11)
         ),
         margin=dict(l=45, r=50, t=75, b=40),
-        height=520,
+        height=540,
     )
 
-    # 6. X축 설정 (날짜 포맷 정규화)
+    # 6. X축 설정 (날짜 포맷 정규화 및 레인지슬라이더 비활성화)
     fig.update_xaxes(
         gridcolor=STANDARD_CHART_THEME['grid_color'],
         linecolor=STANDARD_CHART_THEME['border_color'],
         tickfont=dict(color=STANDARD_CHART_THEME['text_muted'], size=11),
         tickformat="%Y-%m-%d",
         hoverformat="%Y-%m-%d",
+        rangeslider=dict(visible=False),
     )
 
-    # 7. 좌측 Y축 (주가지수)
-    y1_title = f"<b>{market_name} 지수 (Log, pt)</b>" if use_log_scale else f"<b>{market_name} 지수 (pt)</b>"
+    # 7. 좌측 Y축 (주가지수 일봉)
+    y1_title = f"<b>{market_name} 일봉 (Log, pt)</b>" if use_log_scale else f"<b>{market_name} 일봉 (pt)</b>"
     y1_type = "log" if use_log_scale else "linear"
 
     # 유효한 주가지수 범위 산출 (로그 스케일 시 명시적 range 지정으로 Plotly 지수 폭발 버그 원천 차단)
-    valid_close = df["close"].dropna()
-    valid_close = valid_close[valid_close > 0]
-    if use_log_scale and not valid_close.empty:
-        min_p = float(valid_close.min())
-        max_p = float(valid_close.max())
+    valid_low = df["low"].dropna() if "low" in df.columns else df["close"].dropna()
+    valid_low = valid_low[valid_low > 0]
+    valid_high = df["high"].dropna() if "high" in df.columns else df["close"].dropna()
+    valid_high = valid_high[valid_high > 0]
+
+    if use_log_scale and not valid_low.empty:
+        min_p = float(valid_low.min())
+        max_p = float(valid_high.max())
         log_min = float(np.log10(min_p * 0.96))
         log_max = float(np.log10(max_p * 1.04))
         y1_range = [log_min, log_max]

@@ -325,8 +325,16 @@ with st.sidebar:
 
     st.markdown("<hr style='border: 0; height: 1px; background-color: #334155; margin: 14px 0 10px 0;'>", unsafe_allow_html=True)
 
-    # [6단계] 차트 스케일 설정 (로그 스케일 토글)
-    st.markdown("<div style='font-size: 0.95rem; font-weight: 700; color: #e2e8f0; margin-bottom: 6px;'>📐 차트 스케일</div>", unsafe_allow_html=True)
+    # [6단계] 차트 옵션 설정 (이동평균선 및 로그 스케일 토글)
+    st.markdown("<div style='font-size: 0.95rem; font-weight: 700; color: #e2e8f0; margin-bottom: 6px;'>📐 차트 표시 옵션</div>", unsafe_allow_html=True)
+    show_ma_lines = st.checkbox(
+        "이동평균선 (5, 20, 60, 120일선)",
+        value=st.session_state.get("show_ma_lines", True),
+        help="주가지수 일봉 캔들차트 위에 5일(단기), 20일(생명선), 60일(수급선), 120일(경기선) 이동평균선을 오버레이합니다.",
+        key="chk_ma_lines"
+    )
+    st.session_state["show_ma_lines"] = show_ma_lines
+
     use_log_scale = st.checkbox(
         "지수 로그 스케일 (Log Scale)",
         value=st.session_state.get("use_log_scale", False),
@@ -352,7 +360,7 @@ with st.sidebar:
 # 4. 데이터 로딩 (캐시 바인딩 및 가이드 04, 05 준수)
 # ==============================================================================
 force_refresh = st.session_state.pop("force_refresh", False)
-DATASET_SCHEMA_VERSION = "20261025_v6_real_investor_flow"
+DATASET_SCHEMA_VERSION = "20261026_v7_candlestick_ma"
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def load_cached_dataset(market_choice: str, target_date_key: str, schema_ver: str = DATASET_SCHEMA_VERSION, force_refresh: bool = False) -> pd.DataFrame:
@@ -365,7 +373,7 @@ with st.spinner("한국 증시 밸런스 데이터를 수집 및 분석하는 �
 # 확장 컬럼 존재 여부 자가 치유(Self-Healing) 방어 코드
 REQUIRED_EXT_COLS = [
     "credit_jo", "deposit_jo", "vkospi", "foreign_cum_jo", "inst_cum_jo",
-    "above_200ma", "foreign_daily_eok", "inst_daily_eok"
+    "above_200ma", "foreign_daily_eok", "inst_daily_eok", "ma5", "ma20", "ma60", "ma120"
 ]
 if df_raw.empty or any(col not in df_raw.columns for col in REQUIRED_EXT_COLS):
     st.cache_data.clear()
@@ -698,10 +706,11 @@ with kpi4:
     )
 
 # (5) [가이드 01 Level 2] 본문 메인 섹터 제목 (차트)
-scale_badge = " <span style='font-size: 0.80rem; background-color: #334155; color: #38bdf8; padding: 2px 8px; border-radius: 4px; font-weight: 600; vertical-align: middle; margin-left: 6px;'>로그 스케일 (Log)</span>" if use_log_scale else ""
+scale_badge = " <span style='font-size: 0.80rem; background-color: #334155; color: #38bdf8; padding: 2px 8px; border-radius: 4px; font-weight: 600; vertical-align: middle; margin-left: 6px;'>로그 스케일</span>" if use_log_scale else ""
+ma_badge = " <span style='font-size: 0.80rem; background-color: #1e293b; border: 1px solid #334155; color: #f59e0b; padding: 2px 8px; border-radius: 4px; font-weight: 600; vertical-align: middle; margin-left: 6px;'>이평선 (5, 20, 60, 120)</span>" if show_ma_lines else ""
 st.markdown(
     f"<div style='font-size: 1.20rem; color: #8AB4F8; font-weight: 700; margin: 20px 0 10px 0;'>"
-    f"📈 {selected_market} 지수 & {meta.get('short_name', selected_indicator)} 비교 차트{scale_badge}"
+    f"📈 {selected_market} 일봉 & {meta.get('short_name', selected_indicator)} 비교 차트{scale_badge}{ma_badge}"
     f"</div>",
     unsafe_allow_html=True
 )
@@ -711,7 +720,8 @@ fig = create_market_balance_chart(
     df=df_filtered,
     market_name=selected_market,
     indicator_name=selected_indicator,
-    use_log_scale=use_log_scale
+    use_log_scale=use_log_scale,
+    show_ma_lines=show_ma_lines
 )
 st.plotly_chart(fig, use_container_width=True)
 
