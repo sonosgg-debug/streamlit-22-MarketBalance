@@ -227,7 +227,13 @@ def apply_period_preset(preset: str):
     st.session_state["selected_period"] = preset
     st.session_state["end_date"] = end_d
 
-    if preset == "3M":
+    if preset == "1W":
+        st.session_state["start_date"] = end_d - timedelta(days=7)
+    elif preset == "2W":
+        st.session_state["start_date"] = end_d - timedelta(days=14)
+    elif preset == "1M":
+        st.session_state["start_date"] = end_d - timedelta(days=30)
+    elif preset == "3M":
         st.session_state["start_date"] = end_d - timedelta(days=90)
     elif preset == "6M":
         st.session_state["start_date"] = end_d - timedelta(days=180)
@@ -312,11 +318,25 @@ with st.sidebar:
 
     st.markdown("<hr style='border: 0; height: 1px; background-color: #334155; margin: 14px 0 10px 0;'>", unsafe_allow_html=True)
 
-    # [5단계] 빠른 선택 (가로 쓰기 프리셋 버튼 5열)
+    # [5단계] 빠른 선택 (가로 2행, 4열씩 8개 옵션: 1W, 2W, 1M, 3M / 6M, 1Y, YTD, MAX)
     st.markdown("<div style='font-size: 0.95rem; font-weight: 700; color: #e2e8f0; margin-bottom: 6px;'>⚡ 빠른 선택</div>", unsafe_allow_html=True)
-    preset_cols = st.columns(5, gap="small")
-    for idx, p in enumerate(PERIOD_PRESETS):
-        with preset_cols[idx]:
+    
+    # 1행: 1W, 2W, 1M, 3M
+    row1_presets = ["1W", "2W", "1M", "3M"]
+    cols_row1 = st.columns(4, gap="small")
+    for idx, p in enumerate(row1_presets):
+        with cols_row1[idx]:
+            is_active = (st.session_state.get("selected_period") == p)
+            btn_type = "primary" if is_active else "secondary"
+            if st.button(p, key=f"btn_p_{p}", type=btn_type, use_container_width=True):
+                apply_period_preset(p)
+                st.rerun()
+
+    # 2행: 6M, 1Y, YTD, MAX
+    row2_presets = ["6M", "1Y", "YTD", "MAX"]
+    cols_row2 = st.columns(4, gap="small")
+    for idx, p in enumerate(row2_presets):
+        with cols_row2[idx]:
             is_active = (st.session_state.get("selected_period") == p)
             btn_type = "primary" if is_active else "secondary"
             if st.button(p, key=f"btn_p_{p}", type=btn_type, use_container_width=True):

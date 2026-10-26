@@ -53,8 +53,8 @@ KRX_INDEX_CODE_MAP = {
 INDICATOR_OPTIONS = ["PER", "PBR", "RSI", "ADR", "예탁금&신용", "VKOSPI", "외인&기관수급", "200일선상회"]
 DEFAULT_INDICATOR = "PER"
 
-# 기간 선택 프리셋
-PERIOD_PRESETS = ["3M", "6M", "1Y", "YTD", "MAX"]
+# 기간 선택 프리셋 (8개 옵션: 1W, 2W, 1M, 3M, 6M, 1Y, YTD, MAX)
+PERIOD_PRESETS = ["1W", "2W", "1M", "3M", "6M", "1Y", "YTD", "MAX"]
 DEFAULT_PERIOD = "1Y"
 
 # 지표별 메타데이터
