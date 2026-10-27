@@ -228,7 +228,13 @@ def get_fundamentals_data(market: str = "KOSPI", force_refresh: bool = False, **
     expected_day = get_latest_expected_trading_day()
 
     # 강제 갱신이거나 캐시가 비어있거나 최신일이 부족할 때 증분 수집
-    if force_refresh or df_cache is None or df_cache.empty:
+    needs_sync = force_refresh or (df_cache is None) or df_cache.empty
+    if not needs_sync and df_cache is not None:
+        m_cache = df_cache[df_cache["market"] == market]
+        if m_cache.empty or (m_cache["date"].max() < expected_day):
+            needs_sync = True
+
+    if needs_sync:
         if HAS_PYKRX and stock is not None:
             try:
                 ensure_krx_auth()

@@ -16,16 +16,16 @@ if os.path.exists(api_key_path):
 import pykrx.stock as stock
 
 def build_fundamentals():
-    print("Collecting KOSPI fundamentals (2020-01-01 to 2026-10-25)...")
-    df_kospi = stock.get_index_fundamental("20200101", "20261025", "1001")
+    print("Collecting KOSPI fundamentals (2020-01-01 to 2026-10-28)...")
+    df_kospi = stock.get_index_fundamental("20200101", "20261028", "1001")
     df_kospi = df_kospi.reset_index()
     # rename columns
     df_kospi.columns = ["date", "close", "change_pct", "per", "pbr", "div_yield"]
     df_kospi["market"] = "KOSPI"
     print(f"KOSPI done: {len(df_kospi)} rows")
 
-    print("Collecting KOSDAQ fundamentals (2020-01-01 to 2026-10-25)...")
-    df_kosdaq = stock.get_index_fundamental("20200101", "20261025", "2001")
+    print("Collecting KOSDAQ fundamentals (2020-01-01 to 2026-10-28)...")
+    df_kosdaq = stock.get_index_fundamental("20200101", "20261028", "2001")
     df_kosdaq = df_kosdaq.reset_index()
     df_kosdaq.columns = ["date", "close", "change_pct", "per", "pbr", "div_yield"]
     df_kosdaq["market"] = "KOSDAQ"

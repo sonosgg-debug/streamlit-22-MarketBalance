@@ -380,7 +380,7 @@ with st.sidebar:
 # 4. 데이터 로딩 (캐시 바인딩 및 가이드 04, 05 준수)
 # ==============================================================================
 force_refresh = st.session_state.pop("force_refresh", False)
-DATASET_SCHEMA_VERSION = "20261026_v7_candlestick_ma"
+DATASET_SCHEMA_VERSION = "20261028_v8_valid_date_fallback"
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def load_cached_dataset(market_choice: str, target_date_key: str, schema_ver: str = DATASET_SCHEMA_VERSION, force_refresh: bool = False) -> pd.DataFrame:
@@ -458,17 +458,33 @@ close_sub_html = f"<span class='{bull_class}'>{chg_sign}{close_chg:,.2f}pt ({chg
 
 meta = INDICATOR_META.get(selected_indicator, {})
 
-# 보조지표 요약값 계산
+def get_valid_indicator_rows(df_sub: pd.DataFrame, col_names: list, df_all: pd.DataFrame = None):
+    """
+    지정된 지표 컬럼들이 notna인 가장 최신의 공시/확정 데이터 행 2개를 안전하게 탐색합니다.
+    (장중 미집계, 금융투자협회 T+1 결제 공시 지연, 야간 KRX 집계 차이 등으로 인한 N/A 방지)
+    """
+    valid = df_sub.dropna(subset=col_names)
+    if valid.empty and df_all is not None:
+        valid = df_all.dropna(subset=col_names)
+    if valid.empty:
+        return None, None
+    row_l = valid.iloc[-1]
+    row_p = valid.iloc[-2] if len(valid) >= 2 else None
+    return row_l, row_p
+
+# 보조지표 요약값 계산 (공시 주기 비동기성에 따른 Fallback 적용)
 if selected_indicator == "PER":
-    val_latest = latest_row.get("per", np.nan)
-    val_prev = prev_row.get("per", np.nan)
-    val_str = f"{val_latest:.2f}배" if pd.notna(val_latest) else "N/A"
-    diff = val_latest - val_prev if (pd.notna(val_latest) and pd.notna(val_prev)) else 0.0
-    diff_sign = "+" if diff > 0 else ""
-    val_sub_html = f"<span class='text-neutral'>전일대비 {diff_sign}{diff:.2f}배</span>"
-    
-    # 상태 진단
-    if pd.notna(val_latest):
+    row_l, row_p = get_valid_indicator_rows(df_filtered, ["per"], df_raw)
+    if row_l is not None:
+        val_latest = row_l["per"]
+        val_prev = row_p["per"] if row_p is not None else np.nan
+        val_str = f"{val_latest:.2f}배"
+        diff = val_latest - val_prev if pd.notna(val_prev) else 0.0
+        diff_sign = "+" if diff > 0 else ""
+        date_badge = f" <span style='font-size:0.75rem; color:#94a3b8;'>({row_l['date']} 공시)</span>" if row_l["date"] != latest_row["date"] else ""
+        val_sub_html = f"<span class='text-neutral'>전일대비 {diff_sign}{diff:.2f}배{date_badge}</span>"
+        
+        # 상태 진단
         if val_latest < 10.0:
             status_text = "🟢 역사적 저평가 (이익 안전마진 구간)"
         elif val_latest > 16.0:
@@ -476,17 +492,21 @@ if selected_indicator == "PER":
         else:
             status_text = "⚪ 적정 밸류에이션 구간"
     else:
+        val_str = "N/A"
+        val_sub_html = "<span class='text-neutral'>데이터 확인 중</span>"
         status_text = "데이터 확인 중"
 
 elif selected_indicator == "PBR":
-    val_latest = latest_row.get("pbr", np.nan)
-    val_prev = prev_row.get("pbr", np.nan)
-    val_str = f"{val_latest:.2f}배" if pd.notna(val_latest) else "N/A"
-    diff = val_latest - val_prev if (pd.notna(val_latest) and pd.notna(val_prev)) else 0.0
-    diff_sign = "+" if diff > 0 else ""
-    val_sub_html = f"<span class='text-neutral'>전일대비 {diff_sign}{diff:.2f}배</span>"
+    row_l, row_p = get_valid_indicator_rows(df_filtered, ["pbr"], df_raw)
+    if row_l is not None:
+        val_latest = row_l["pbr"]
+        val_prev = row_p["pbr"] if row_p is not None else np.nan
+        val_str = f"{val_latest:.2f}배"
+        diff = val_latest - val_prev if pd.notna(val_prev) else 0.0
+        diff_sign = "+" if diff > 0 else ""
+        date_badge = f" <span style='font-size:0.75rem; color:#94a3b8;'>({row_l['date']} 공시)</span>" if row_l["date"] != latest_row["date"] else ""
+        val_sub_html = f"<span class='text-neutral'>전일대비 {diff_sign}{diff:.2f}배{date_badge}</span>"
 
-    if pd.notna(val_latest):
         if val_latest < 1.0:
             status_text = "🟢 자산가치 청산선 하회 (극단적 바닥권)"
         elif val_latest > 1.4:
@@ -494,17 +514,21 @@ elif selected_indicator == "PBR":
         else:
             status_text = "⚪ 적정 자산평가 구간"
     else:
+        val_str = "N/A"
+        val_sub_html = "<span class='text-neutral'>데이터 확인 중</span>"
         status_text = "데이터 확인 중"
 
 elif selected_indicator == "RSI":
-    val_latest = latest_row.get("rsi_20", np.nan)
-    val_prev = prev_row.get("rsi_20", np.nan)
-    val_str = f"{val_latest:.1f}" if pd.notna(val_latest) else "N/A"
-    diff = val_latest - val_prev if (pd.notna(val_latest) and pd.notna(val_prev)) else 0.0
-    diff_sign = "+" if diff > 0 else ""
-    val_sub_html = f"<span class='text-neutral'>전일대비 {diff_sign}{diff:.1f}pt</span>"
+    row_l, row_p = get_valid_indicator_rows(df_filtered, ["rsi_20"], df_raw)
+    if row_l is not None:
+        val_latest = row_l["rsi_20"]
+        val_prev = row_p["rsi_20"] if row_p is not None else np.nan
+        val_str = f"{val_latest:.1f}"
+        diff = val_latest - val_prev if pd.notna(val_prev) else 0.0
+        diff_sign = "+" if diff > 0 else ""
+        date_badge = f" <span style='font-size:0.75rem; color:#94a3b8;'>({row_l['date']})</span>" if row_l["date"] != latest_row["date"] else ""
+        val_sub_html = f"<span class='text-neutral'>전일대비 {diff_sign}{diff:.1f}pt{date_badge}</span>"
 
-    if pd.notna(val_latest):
         if val_latest >= 70.0:
             status_text = "🔴 과매수 국면 (조정 및 차익실현 경계)"
         elif val_latest <= 30.0:
@@ -514,70 +538,78 @@ elif selected_indicator == "RSI":
         else:
             status_text = "⚪ 하락 모멘텀 우세 (50 하회)"
     else:
+        val_str = "N/A"
+        val_sub_html = "<span class='text-neutral'>데이터 확인 중</span>"
         status_text = "데이터 확인 중"
 
 elif selected_indicator == "ADR":
-    adr14 = latest_row.get("adr_14", np.nan)
-    adr1 = latest_row.get("adr_1", np.nan)
-    val_str = f"{adr14:.1f}%" if pd.notna(adr14) else "N/A"
-    adr1_str = f"{adr1:.1f}%" if pd.notna(adr1) else "N/A"
-    val_sub_html = f"<span class='text-neutral'>당일 ADR(1): <b>{adr1_str}</b></span>"
+    row_l, _ = get_valid_indicator_rows(df_filtered, ["adr_14"], df_raw)
+    if row_l is not None:
+        adr14 = row_l.get("adr_14", np.nan)
+        adr1 = row_l.get("adr_1", np.nan)
+        val_str = f"{adr14:.1f}%" if pd.notna(adr14) else "N/A"
+        adr1_str = f"{adr1:.1f}%" if pd.notna(adr1) else "N/A"
+        date_badge = f" <span style='font-size:0.75rem; color:#94a3b8;'>({row_l['date']} 기준)</span>" if row_l["date"] != latest_row["date"] else ""
+        val_sub_html = f"<span class='text-neutral'>당일 ADR(1): <b>{adr1_str}</b>{date_badge}</span>"
 
-    if pd.notna(adr14):
-        if adr14 >= 120.0:
-            status_text = "🔴 과열권 (120% 상회: 차익실현 분할매도 구간)"
-        elif adr14 <= 75.0:
-            status_text = "🟢 침체/바닥권 (75% 하회: 저점 매수 기회 구간)"
+        if pd.notna(adr14):
+            if adr14 >= 120.0:
+                status_text = "🔴 과열권 (120% 상회: 차익실현 분할매도 구간)"
+            elif adr14 <= 75.0:
+                status_text = "🟢 침체/바닥권 (75% 하회: 저점 매수 기회 구간)"
+            else:
+                status_text = "⚪ 정상 균형 범위 (75% ~ 120%)"
         else:
-            status_text = "⚪ 정상 균형 범위 (75% ~ 120%)"
+            status_text = "데이터 확인 중"
     else:
+        val_str = "N/A"
+        val_sub_html = "<span class='text-neutral'>데이터 확인 중</span>"
         status_text = "데이터 확인 중"
 
 elif selected_indicator == "예탁금&신용":
-    # 금융투자협회(KOFIA) 공식 결제 공시(T+1 집계) 지연을 고려하여 최신 공시 거래일 기준 추출
-    valid_dep_rows = df_filtered.dropna(subset=["deposit_jo", "credit_jo"])
-    if not valid_dep_rows.empty:
-        kofia_row = valid_dep_rows.iloc[-1]
-        kofia_date = kofia_row["date"]
-        val_dep = kofia_row["deposit_jo"]
-        val_cred = kofia_row["credit_jo"]
+    row_l, row_p = get_valid_indicator_rows(df_filtered, ["deposit_jo", "credit_jo"], df_raw)
+    if row_l is not None:
+        kofia_date = row_l["date"]
+        val_dep = row_l["deposit_jo"]
+        val_cred = row_l["credit_jo"]
         val_str = f"예탁 {val_dep:.1f}조 / 신용 {val_cred:.1f}조"
         ratio = (val_cred / val_dep * 100.0) if (val_dep and val_dep > 0 and pd.notna(val_cred)) else np.nan
         ratio_str = f"{ratio:.1f}%" if pd.notna(ratio) else "N/A"
 
-        if len(valid_dep_rows) >= 2:
-            prev_kofia_row = valid_dep_rows.iloc[-2]
-            dep_diff = val_dep - prev_kofia_row["deposit_jo"]
+        if row_p is not None:
+            dep_diff = val_dep - row_p["deposit_jo"]
             dep_sign = "+" if dep_diff > 0 else ""
-            cred_diff = val_cred - prev_kofia_row["credit_jo"]
+            cred_diff = val_cred - row_p["credit_jo"]
             cred_sign = "+" if cred_diff > 0 else ""
             val_sub_html = f"<span class='text-neutral'>금투협({kofia_date}): 예탁 <b>{dep_sign}{dep_diff:.1f}조</b> / 신용 <b>{cred_sign}{cred_diff:.1f}조</b></span>"
         else:
             val_sub_html = f"<span class='text-neutral'>금투협(KOFIA) 최종 공시일: <b>{kofia_date}</b> (신용비율: {ratio_str})</span>"
+
+        if pd.notna(ratio):
+            if ratio >= 40.0:
+                status_text = "🔴 신용 레버리지 과열 (변동성 확대 및 반대매매 주의)"
+            elif ratio <= 28.0:
+                status_text = "🟢 신용 리스크 해소 (대기자금 풍부, 반등 안전마진)"
+            else:
+                status_text = f"⚪ 적정 수급 균형 (신용비율 {ratio:.1f}%)"
+        else:
+            status_text = "데이터 확인 중"
     else:
         val_str = "N/A"
         val_sub_html = "<span class='text-neutral'>공시 데이터 확인 중</span>"
-        ratio = np.nan
-
-    if pd.notna(ratio):
-        if ratio >= 40.0:
-            status_text = "🔴 신용 레버리지 과열 (변동성 확대 및 반대매매 주의)"
-        elif ratio <= 28.0:
-            status_text = "🟢 신용 리스크 해소 (대기자금 풍부, 반등 안전마진)"
-        else:
-            status_text = f"⚪ 적정 수급 균형 (신용비율 {ratio:.1f}%)"
-    else:
         status_text = "데이터 확인 중"
 
 elif selected_indicator == "VKOSPI":
-    val_latest = latest_row.get("vkospi", np.nan)
-    val_prev = prev_row.get("vkospi", np.nan)
-    val_str = f"{val_latest:.2f}pt" if pd.notna(val_latest) else "N/A"
-    diff = val_latest - val_prev if (pd.notna(val_latest) and pd.notna(val_prev)) else 0.0
-    diff_sign = "+" if diff > 0 else ""
-    val_sub_html = f"<span class='text-neutral'>전일대비 {diff_sign}{diff:.2f}pt</span>"
+    row_l, row_p = get_valid_indicator_rows(df_filtered, ["vkospi"], df_raw)
+    if row_l is not None:
+        val_latest = row_l["vkospi"]
+        val_prev = row_p["vkospi"] if row_p is not None else np.nan
+        val_str = f"{val_latest:.2f}pt"
+        diff = val_latest - val_prev if pd.notna(val_prev) else 0.0
+        diff_sign = "+" if diff > 0 else ""
+        date_badge = f" <span style='font-size:0.75rem; color:#94a3b8;'>({row_l['date']} 공시)</span>" if row_l["date"] != latest_row["date"] else ""
+        val_sub_html = f"<span class='text-neutral'>전일대비 {diff_sign}{diff:.2f}pt{date_badge}</span>"
 
-    if pd.notna(val_latest):
         if val_latest >= 30.0:
             status_text = "🟢 극단적 공포 국면 (30pt 상회: 역발상 매수 기회)"
         elif val_latest <= 15.0:
@@ -585,27 +617,31 @@ elif selected_indicator == "VKOSPI":
         else:
             status_text = "⚪ 정상 변동성 안정 구간 (15pt ~ 30pt)"
     else:
+        val_str = "N/A"
+        val_sub_html = "<span class='text-neutral'>데이터 확인 중</span>"
         status_text = "데이터 확인 중"
 
 elif selected_indicator == "외인&기관수급":
-    for_cum = latest_row.get("foreign_cum_jo", np.nan)
-    inst_cum = latest_row.get("inst_cum_jo", np.nan)
-    val_str = f"외 {for_cum:+.1f}조 / 기 {inst_cum:+.1f}조" if (pd.notna(for_cum) and pd.notna(inst_cum)) else "N/A"
-    
-    # 최신 당일 순매수 (억원 단위로 직관적 표시)
-    for_d_eok = latest_row.get("foreign_daily_eok", np.nan)
-    inst_d_eok = latest_row.get("inst_daily_eok", np.nan)
-    if pd.isna(for_d_eok) and len(df_filtered) >= 2:
-        for_p = prev_row.get("foreign_cum_jo", 0.0)
-        inst_p = prev_row.get("inst_cum_jo", 0.0)
-        for_d_eok = (for_cum - for_p) * 10000.0
-        inst_d_eok = (inst_cum - inst_p) * 10000.0
+    row_l, row_p = get_valid_indicator_rows(df_filtered, ["foreign_cum_jo", "inst_cum_jo"], df_raw)
+    if row_l is not None:
+        for_cum = row_l["foreign_cum_jo"]
+        inst_cum = row_l["inst_cum_jo"]
+        val_str = f"외 {for_cum:+.1f}조 / 기 {inst_cum:+.1f}조"
+        
+        # 최신 당일 순매수 (억원 단위로 직관적 표시)
+        for_d_eok = row_l.get("foreign_daily_eok", np.nan)
+        inst_d_eok = row_l.get("inst_daily_eok", np.nan)
+        if pd.isna(for_d_eok) and row_p is not None:
+            for_p = row_p.get("foreign_cum_jo", 0.0)
+            inst_p = row_p.get("inst_cum_jo", 0.0)
+            for_d_eok = (for_cum - for_p) * 10000.0
+            inst_d_eok = (inst_cum - inst_p) * 10000.0
 
-    for_d_sign = "+" if (pd.notna(for_d_eok) and for_d_eok > 0) else ""
-    inst_d_sign = "+" if (pd.notna(inst_d_eok) and inst_d_eok > 0) else ""
-    val_sub_html = f"<span class='text-neutral'>당일: 외인 <b>{for_d_sign}{for_d_eok:,.0f}억</b> / 기관 <b>{inst_d_sign}{inst_d_eok:,.0f}억</b></span>"
+        for_d_sign = "+" if (pd.notna(for_d_eok) and for_d_eok > 0) else ""
+        inst_d_sign = "+" if (pd.notna(inst_d_eok) and inst_d_eok > 0) else ""
+        date_badge = f" <span style='font-size:0.75rem; color:#94a3b8;'>({row_l['date']})</span>" if row_l["date"] != latest_row["date"] else ""
+        val_sub_html = f"<span class='text-neutral'>당일: 외인 <b>{for_d_sign}{for_d_eok:,.0f}억</b> / 기관 <b>{inst_d_sign}{inst_d_eok:,.0f}억</b>{date_badge}</span>"
 
-    if pd.notna(for_cum) and pd.notna(inst_cum):
         if for_cum > 0 and inst_cum > 0:
             status_text = "🔴 메이저 쌍끌이 순매수 우세 (지수 상승 견인)"
         elif for_cum < 0 and inst_cum < 0:
@@ -617,17 +653,21 @@ elif selected_indicator == "외인&기관수급":
         else:
             status_text = "⚪ 외인·기관 수급 공방"
     else:
+        val_str = "N/A"
+        val_sub_html = "<span class='text-neutral'>데이터 확인 중</span>"
         status_text = "데이터 확인 중"
 
 elif selected_indicator == "200일선상회":
-    val_latest = latest_row.get("above_200ma", np.nan)
-    val_prev = prev_row.get("above_200ma", np.nan)
-    val_str = f"{val_latest:.1f}%" if pd.notna(val_latest) else "N/A"
-    diff = val_latest - val_prev if (pd.notna(val_latest) and pd.notna(val_prev)) else 0.0
-    diff_sign = "+" if diff > 0 else ""
-    val_sub_html = f"<span class='text-neutral'>전일대비 {diff_sign}{diff:.1f}%p</span>"
+    row_l, row_p = get_valid_indicator_rows(df_filtered, ["above_200ma"], df_raw)
+    if row_l is not None:
+        val_latest = row_l["above_200ma"]
+        val_prev = row_p["above_200ma"] if row_p is not None else np.nan
+        val_str = f"{val_latest:.1f}%"
+        diff = val_latest - val_prev if pd.notna(val_prev) else 0.0
+        diff_sign = "+" if diff > 0 else ""
+        date_badge = f" <span style='font-size:0.75rem; color:#94a3b8;'>({row_l['date']} 공시)</span>" if row_l["date"] != latest_row["date"] else ""
+        val_sub_html = f"<span class='text-neutral'>전일대비 {diff_sign}{diff:.1f}%p{date_badge}</span>"
 
-    if pd.notna(val_latest):
         if val_latest >= 75.0:
             status_text = "🔴 시장 전반 과열권 (75% 상회: 차익실현 경계)"
         elif val_latest <= 25.0:
@@ -637,6 +677,8 @@ elif selected_indicator == "200일선상회":
         else:
             status_text = "⚪ 시장 절반 이상 장기 하락 추세 (50% 하회)"
     else:
+        val_str = "N/A"
+        val_sub_html = "<span class='text-neutral'>데이터 확인 중</span>"
         status_text = "데이터 확인 중"
 
 # (4) KPI 요약 카드 4열 배치
@@ -694,12 +736,20 @@ with kpi4:
     }
     target_col, unit_label, stat_prefix = col_map.get(selected_indicator, ("close", "pt", ""))
 
+    latest_stat_date = e_str
     if selected_indicator == "외인&기관수급":
-        for_min = df_filtered["foreign_cum_jo"].min()
-        for_max = df_filtered["foreign_cum_jo"].max()
-        inst_min = df_filtered["inst_cum_jo"].min()
-        inst_max = df_filtered["inst_cum_jo"].max()
-        stat_text = f"외 {for_min:+.1f}~{for_max:+.1f}조 / 기 {inst_min:+.1f}~{inst_max:+.1f}조"
+        for_series = df_filtered["foreign_cum_jo"].dropna()
+        inst_series = df_filtered["inst_cum_jo"].dropna()
+        if not for_series.empty and not inst_series.empty:
+            for_min = for_series.min()
+            for_max = for_series.max()
+            inst_min = inst_series.min()
+            inst_max = inst_series.max()
+            stat_text = f"외 {for_min:+.1f}~{for_max:+.1f}조 / 기 {inst_min:+.1f}~{inst_max:+.1f}조"
+            latest_idx = for_series.index[-1]
+            latest_stat_date = df_filtered.loc[latest_idx, "date"]
+        else:
+            stat_text = "통계 계산 중"
     elif target_col in df_filtered.columns:
         series_stat = df_filtered[target_col].dropna()
         if not series_stat.empty:
@@ -707,12 +757,19 @@ with kpi4:
             stat_max = series_stat.max()
             stat_mean = series_stat.mean()
             stat_text = f"{stat_prefix}최저 {stat_min:.1f} / 평균 {stat_mean:.1f} / 최고 {stat_max:.1f}{unit_label}"
+            latest_idx = series_stat.index[-1]
+            latest_stat_date = df_filtered.loc[latest_idx, "date"]
         else:
-            stat_text = "N/A"
+            stat_text = "통계 계산 중"
     else:
-        stat_text = "N/A"
+        stat_text = "통계 계산 중"
 
-    period_sub = f"{s_str} ~ {valid_dep_rows.iloc[-1]['date']} (금투협 공시)" if (selected_indicator == "예탁금&신용" and 'valid_dep_rows' in locals() and not valid_dep_rows.empty) else f"{s_str} ~ {e_str}"
+    if selected_indicator == "예탁금&신용" and 'row_l' in locals() and row_l is not None and "date" in row_l:
+        period_sub = f"{s_str} ~ {row_l['date']} (금투협 공시)"
+    elif latest_stat_date < e_str:
+        period_sub = f"{s_str} ~ {latest_stat_date} (최신 공시)"
+    else:
+        period_sub = f"{s_str} ~ {e_str}"
 
     st.markdown(
         f"""

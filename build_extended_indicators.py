@@ -46,7 +46,7 @@ def build_extended():
                     "tmpV41": "1",
                     "tmpV1": "D",
                     "tmpV45": "20200101",
-                    "tmpV46": "20261025",
+                    "tmpV46": "20301231",
                     "OBJ_NM": "STATSCU0100000060BO"
                 }
             },
@@ -75,7 +75,7 @@ def build_extended():
                     "tmpV41": "1",
                     "tmpV1": "D",
                     "tmpV45": "20200101",
-                    "tmpV46": "20261025",
+                    "tmpV46": "20301231",
                     "OBJ_NM": "STATSCU0100000070BO"
                 }
             },
