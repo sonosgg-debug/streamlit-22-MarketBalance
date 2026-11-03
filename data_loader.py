@@ -446,23 +446,23 @@ def parse_market_key(market_choice: str) -> str:
     return "KOSPI"
 
 
-def sync_extended_indicators_incremental(df_ext: pd.DataFrame, expected_day: str) -> pd.DataFrame:
+def sync_extended_indicators_incremental(df_ext: pd.DataFrame, expected_day: str, force_refresh: bool = False) -> pd.DataFrame:
     """
     EXTENDED_INDICATORS_PATH의 마지막 거래일이 기대 거래일보다 뒤처져 있거나
-    최근 KOFIA 예탁금/신용잔고 결측치(T+1 결제 공시 대기분)가 발생했을 때
+    최근 KOFIA 예탁금/신용잔고 결측치(T+1 결제 공시 대기분)가 발생했을 때, 혹은 force_refresh 시
     KOFIA FreeSIS 및 네이버 모바일 트렌드 API를 통해 자동 증분 동기화합니다.
     """
     if df_ext is None or df_ext.empty:
         return df_ext
 
-    need_kofia = False
+    need_kofia = force_refresh
     if "deposit_eok" in df_ext.columns and df_ext["deposit_eok"].tail(5).isna().any():
         need_kofia = True
 
     max_d = df_ext["date"].max()
     new_dates = []
-    if max_d < expected_day:
-        df_p = get_index_price("KOSPI")
+    if (max_d < expected_day) or force_refresh:
+        df_p = get_index_price("KOSPI", force_refresh=force_refresh)
         if not df_p.empty:
             new_dates = df_p[df_p["date"] > max_d]["date"].tolist()
             if new_dates:
@@ -610,7 +610,7 @@ def sync_extended_indicators_incremental(df_ext: pd.DataFrame, expected_day: str
     return df_ext
 
 
-def get_extended_indicators(market: str = "KOSPI", **kwargs) -> pd.DataFrame:
+def get_extended_indicators(market: str = "KOSPI", force_refresh: bool = False, **kwargs) -> pd.DataFrame:
     """
     [가이드 05] 고객예탁금/신용잔고, VKOSPI, 외인/기관 순매수, 200일선 상회 비율 로드
     - 로컬 캐시 최우선 반환 후 필요 시 자동 증분 동기화
@@ -623,7 +623,7 @@ def get_extended_indicators(market: str = "KOSPI", **kwargs) -> pd.DataFrame:
         df_ext["date"] = pd.to_datetime(df_ext["date"]).dt.strftime("%Y-%m-%d")
 
         expected_day = get_latest_expected_trading_day()
-        df_ext = sync_extended_indicators_incremental(df_ext, expected_day)
+        df_ext = sync_extended_indicators_incremental(df_ext, expected_day, force_refresh=force_refresh)
 
         # 시장별 필터링 컬럼 매핑
         is_kp = (market == "KOSPI")
@@ -702,7 +702,7 @@ def get_market_balance_dataset(market_choice: str = "코스피 (KOSPI)", force_r
         df_merged["adr_14"] = np.nan
 
     # 5. 확장 4대 지표 병합 (예탁금, 신용잔고, VKOSPI, 외인/기관 누적순매수, 200일선 상회)
-    df_ext = get_extended_indicators(market=market)
+    df_ext = get_extended_indicators(market=market, force_refresh=force_refresh)
     if not df_ext.empty:
         df_merged = pd.merge(df_merged, df_ext, on="date", how="left")
     
