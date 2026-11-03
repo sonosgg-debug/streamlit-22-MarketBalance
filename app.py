@@ -380,7 +380,7 @@ with st.sidebar:
 # 4. 데이터 로딩 (캐시 바인딩 및 가이드 04, 05 준수)
 # ==============================================================================
 force_refresh = st.session_state.pop("force_refresh", False)
-DATASET_SCHEMA_VERSION = "20261028_v8_valid_date_fallback"
+DATASET_SCHEMA_VERSION = "20261104_v9_auto_incremental_sync"
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def load_cached_dataset(market_choice: str, target_date_key: str, schema_ver: str = DATASET_SCHEMA_VERSION, force_refresh: bool = False) -> pd.DataFrame:
