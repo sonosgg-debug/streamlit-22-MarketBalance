@@ -423,7 +423,7 @@ with st.sidebar:
 # 4. 데이터 로딩 (캐시 바인딩 및 가이드 04, 05 준수)
 # ==============================================================================
 force_refresh = st.session_state.pop("force_refresh", False)
-DATASET_SCHEMA_VERSION = "20261118_v10_macd_bollinger"
+DATASET_SCHEMA_VERSION = "20261118_v11_fix_zero_fundamentals"
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def load_cached_dataset(market_choice: str, target_date_key: str, schema_ver: str = DATASET_SCHEMA_VERSION, force_refresh: bool = False) -> pd.DataFrame:
@@ -506,10 +506,17 @@ def get_valid_indicator_rows(df_sub: pd.DataFrame, col_names: list, df_all: pd.D
     """
     지정된 지표 컬럼들이 notna인 가장 최신의 공시/확정 데이터 행 2개를 안전하게 탐색합니다.
     (장중 미집계, 금융투자협회 T+1 결제 공시 지연, 야간 KRX 집계 차이 등으로 인한 N/A 방지)
+    0.00 이하의 값은 미산출/무효 데이터로 간주하여 필터링합니다.
     """
     valid = df_sub.dropna(subset=col_names)
+    for c in col_names:
+        if c in ["per", "pbr", "div_yield", "adr_14", "adr_1", "deposit_jo", "credit_jo", "vkospi"]:
+            valid = valid[valid[c] > 0.01]
     if valid.empty and df_all is not None:
         valid = df_all.dropna(subset=col_names)
+        for c in col_names:
+            if c in ["per", "pbr", "div_yield", "adr_14", "adr_1", "deposit_jo", "credit_jo", "vkospi"]:
+                valid = valid[valid[c] > 0.01]
     if valid.empty:
         return None, None
     row_l = valid.iloc[-1]
@@ -826,6 +833,8 @@ with kpi4:
             stat_text = "통계 계산 중"
     elif target_col in df_filtered.columns:
         series_stat = df_filtered[target_col].dropna()
+        if target_col in ["per", "pbr", "div_yield", "deposit_jo", "credit_jo", "vkospi"]:
+            series_stat = series_stat[series_stat > 0.01]
         if not series_stat.empty:
             stat_min = series_stat.min()
             stat_max = series_stat.max()

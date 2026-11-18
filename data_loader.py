@@ -222,6 +222,8 @@ def get_fundamentals_data(market: str = "KOSPI", force_refresh: bool = False, **
         try:
             df_cache = pd.read_csv(FUNDAMENTALS_CACHE_PATH)
             df_cache["date"] = pd.to_datetime(df_cache["date"]).dt.strftime("%Y-%m-%d")
+            # 0.00 이하의 무효/미집계 데이터 필터링 (KRX 미산출 데이터 방어)
+            df_cache = df_cache[(df_cache["per"] > 0.01) & (df_cache["pbr"] > 0.01)].copy()
         except Exception:
             df_cache = None
 
@@ -249,51 +251,60 @@ def get_fundamentals_data(market: str = "KOSPI", force_refresh: bool = False, **
                     df_fresh["market"] = market
                     df_fresh["date"] = pd.to_datetime(df_fresh["date"]).dt.strftime("%Y-%m-%d")
 
-                    if df_cache is not None and not df_cache.empty:
-                        # 병합 및 중복 제거
-                        combined = pd.concat([df_cache, df_fresh], ignore_index=True)
-                        combined = combined.drop_duplicates(subset=["date", "market"], keep="last")
-                        combined = combined.sort_values(["market", "date"]).reset_index(drop=True)
-                        combined.to_csv(FUNDAMENTALS_CACHE_PATH, index=False, encoding="utf-8-sig")
-                        df_cache = combined
-                    else:
-                        df_fresh.to_csv(FUNDAMENTALS_CACHE_PATH, index=False, encoding="utf-8-sig")
-                        df_cache = df_fresh
+                    # KRX는 당일 집계 전(장중 및 야간 집계 전) PER, PBR을 0.0으로 반환합니다.
+                    # 0.00 이하의 미집계 데이터는 제외하여 차트 및 KPI 왜곡을 방지합니다.
+                    df_fresh = df_fresh[(df_fresh["per"] > 0.01) & (df_fresh["pbr"] > 0.01)].copy()
+
+                    if not df_fresh.empty:
+                        if df_cache is not None and not df_cache.empty:
+                            # 병합 및 중복 제거
+                            combined = pd.concat([df_cache, df_fresh], ignore_index=True)
+                            combined = combined.drop_duplicates(subset=["date", "market"], keep="last")
+                            combined = combined.sort_values(["market", "date"]).reset_index(drop=True)
+                            combined.to_csv(FUNDAMENTALS_CACHE_PATH, index=False, encoding="utf-8-sig")
+                            df_cache = combined
+                        else:
+                            df_fresh.to_csv(FUNDAMENTALS_CACHE_PATH, index=False, encoding="utf-8-sig")
+                            df_cache = df_fresh
             except Exception as e:
                 print(f"Incremental KRX fundamentals sync failed: {e}", file=sys.stderr)
 
-        # pykrx 미설치(Streamlit Cloud) 또는 KRX 인증 오류 시,
-        # 지수 종가 등락률에 비례하여 최신 PER/PBR 수학적 보정 (PER = Price / EPS, BPS 불변)
+        # pykrx 미설치(Streamlit Cloud) 등으로 인해 데이터 수집이 불가능하고 3영업일 이상 결측된 경우에 한해,
+        # 지수 종가 등락률에 비례한 수학적 추정치를 적용 (당일 미집계 건은 공식 발표를 대기하기 위해 적용 제외)
         if df_cache is not None and not df_cache.empty:
             m_cache = df_cache[df_cache["market"] == market]
-            if not m_cache.empty and m_cache["date"].max() < expected_day:
-                try:
-                    df_p = get_index_price(market=market)
-                    new_p_rows = df_p[df_p["date"] > m_cache["date"].max()]
-                    if not new_p_rows.empty:
-                        last_f = m_cache.sort_values("date").iloc[-1]
-                        ref_p_val = df_p[df_p["date"] == last_f["date"]]["close"].values
-                        ref_p = ref_p_val[0] if len(ref_p_val) > 0 else new_p_rows["close"].iloc[0]
-                        syn_list = []
-                        for _, pr in new_p_rows.iterrows():
-                            mult = pr["close"] / ref_p if ref_p > 0 else 1.0
-                            syn_list.append({
-                                "date": pr["date"],
-                                "close": pr["close"],
-                                "change_pct": 0.0,
-                                "per": round(last_f["per"] * mult, 2),
-                                "pbr": round(last_f["pbr"] * mult, 2),
-                                "div_yield": last_f.get("div_yield", 1.1),
-                                "market": market
-                            })
-                        if syn_list:
-                            syn_df = pd.DataFrame(syn_list)
-                            df_cache = pd.concat([df_cache, syn_df], ignore_index=True)
-                except Exception:
-                    pass
+            if not m_cache.empty:
+                max_cache_date = pd.to_datetime(m_cache["date"].max())
+                expected_date = pd.to_datetime(expected_day)
+                if (expected_date - max_cache_date).days > 3:
+                    try:
+                        df_p = get_index_price(market=market)
+                        new_p_rows = df_p[df_p["date"] > m_cache["date"].max()]
+                        if not new_p_rows.empty:
+                            last_f = m_cache.sort_values("date").iloc[-1]
+                            ref_p_val = df_p[df_p["date"] == last_f["date"]]["close"].values
+                            ref_p = ref_p_val[0] if len(ref_p_val) > 0 else new_p_rows["close"].iloc[0]
+                            syn_list = []
+                            for _, pr in new_p_rows.iterrows():
+                                mult = pr["close"] / ref_p if ref_p > 0 else 1.0
+                                syn_list.append({
+                                    "date": pr["date"],
+                                    "close": pr["close"],
+                                    "change_pct": 0.0,
+                                    "per": round(last_f["per"] * mult, 2),
+                                    "pbr": round(last_f["pbr"] * mult, 2),
+                                    "div_yield": last_f.get("div_yield", 1.1),
+                                    "market": market
+                                })
+                            if syn_list:
+                                syn_df = pd.DataFrame(syn_list)
+                                df_cache = pd.concat([df_cache, syn_df], ignore_index=True)
+                    except Exception:
+                        pass
 
     if df_cache is not None and not df_cache.empty:
         df_filtered = df_cache[df_cache["market"] == market].copy()
+        df_filtered = df_filtered[(df_filtered["per"] > 0.01) & (df_filtered["pbr"] > 0.01)]
         df_filtered = df_filtered.sort_values("date").reset_index(drop=True)
         return df_filtered
 
@@ -734,6 +745,11 @@ def get_market_balance_dataset(market_choice: str = "코스피 (KOSPI)", force_r
         df_merged["per"] = np.nan
         df_merged["pbr"] = np.nan
         df_merged["div_yield"] = np.nan
+
+    # 펀더멘털 0.0 방어 정제: 0.00 이하의 비정상/미집계 값은 NaN으로 치환하여 차트 왜곡(0으로 급락) 원천 차단
+    for col in ["per", "pbr", "div_yield"]:
+        if col in df_merged.columns:
+            df_merged.loc[df_merged[col] <= 0.01, col] = np.nan
 
     # 4. ADR(14) 및 ADR(1) 병합
     df_adr = get_adr_history(market=market, force_refresh=force_refresh)

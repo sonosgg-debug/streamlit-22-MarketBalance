@@ -144,19 +144,22 @@ def create_market_balance_chart(
 
     # 4. 보조지표 트레이스 (우측 Secondary Y축)
     if indicator_name == "PER":
-        per_series = df["per"].dropna()
+        # 0.00 이하 또는 NaN은 KRX 미집계 상태이므로 필터링하여 유효한 공시 데이터만 플롯 (0으로 곤두박질 방지)
+        valid_per_df = df[pd.notna(df["per"]) & (df["per"] > 0.01)]
+        per_series = valid_per_df["per"]
         fig.add_trace(
             go.Scatter(
-                x=df["date"],
-                y=df["per"],
+                x=valid_per_df["date"],
+                y=valid_per_df["per"],
                 name="PER",
                 mode="lines",
                 line=dict(color=meta.get("line_color", "#F59E0B"), width=2.0),
                 hovertemplate="PER: %{y:.2f}배<extra></extra>",
+                connectgaps=True,
             ),
             secondary_y=True,
         )
-        # 기간 평균선
+        # 기간 평균선 (유효한 공시 데이터 기준으로만 계산)
         if not per_series.empty:
             mean_per = per_series.mean()
             fig.add_hline(
@@ -171,19 +174,22 @@ def create_market_balance_chart(
             )
 
     elif indicator_name == "PBR":
-        pbr_series = df["pbr"].dropna()
+        # 0.00 이하 또는 NaN은 KRX 미집계 상태이므로 필터링하여 유효한 공시 데이터만 플롯 (0으로 곤두박질 방지)
+        valid_pbr_df = df[pd.notna(df["pbr"]) & (df["pbr"] > 0.01)]
+        pbr_series = valid_pbr_df["pbr"]
         fig.add_trace(
             go.Scatter(
-                x=df["date"],
-                y=df["pbr"],
+                x=valid_pbr_df["date"],
+                y=valid_pbr_df["pbr"],
                 name="PBR",
                 mode="lines",
                 line=dict(color=meta.get("line_color", "#10B981"), width=2.0),
                 hovertemplate="PBR: %{y:.2f}배<extra></extra>",
+                connectgaps=True,
             ),
             secondary_y=True,
         )
-        # 기간 평균선
+        # 기간 평균선 (유효한 공시 데이터 기준으로만 계산)
         if not pbr_series.empty:
             mean_pbr = pbr_series.mean()
             fig.add_hline(
