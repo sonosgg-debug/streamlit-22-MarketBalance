@@ -24,13 +24,15 @@ def create_market_balance_chart(
     market_name: str,
     indicator_name: str,
     use_log_scale: bool = False,
-    show_ma_lines: bool = True,
+    show_ma_lines: bool = False,
+    show_bb_bands: bool = True,
     **kwargs
 ) -> go.Figure:
     """
-    주가지수(일봉 캔들차트 + 5/20/60/120 이평선)와 선택된 보조지표를 단일 프레임에서 이중 Y축으로 합성한 고대비 차트를 생성합니다.
+    주가지수(일봉 캔들차트 + 볼린저밴드/이평선)와 선택된 보조지표를 단일 프레임에서 이중 Y축으로 합성한 고대비 차트를 생성합니다.
     - use_log_scale: True일 경우 좌측 주가지수 Y축을 로그 스케일(Logarithmic Scale)로 렌더링
     - show_ma_lines: True일 경우 5, 20, 60, 120일 이동평균선을 좌측 Y축에 함께 오버레이
+    - show_bb_bands: True일 경우 20일 기준 볼린저밴드(상단, 중심선, 하단 음영 밴드) 오버레이
     """
     if df.empty:
         fig = go.Figure()
@@ -78,6 +80,45 @@ def create_market_balance_chart(
         ),
         secondary_y=False,
     )
+
+    # 2.5. 볼린저밴드 트레이스 (20, 2)
+    if show_bb_bands and "bb_upper" in df.columns and "bb_lower" in df.columns:
+        fig.add_trace(
+            go.Scatter(
+                x=df["date"],
+                y=df["bb_upper"],
+                name="BB 상단 (20, 2)",
+                mode="lines",
+                line=dict(color="rgba(148, 163, 184, 0.45)", width=1.1, dash="dash"),
+                hovertemplate="BB 상단: %{y:,.2f}pt<extra></extra>",
+            ),
+            secondary_y=False,
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=df["date"],
+                y=df["bb_lower"],
+                name="BB 하단 (20, 2)",
+                mode="lines",
+                line=dict(color="rgba(148, 163, 184, 0.45)", width=1.1, dash="dash"),
+                fill="tonexty",
+                fillcolor="rgba(148, 163, 184, 0.08)",
+                hovertemplate="BB 하단: %{y:,.2f}pt<extra></extra>",
+            ),
+            secondary_y=False,
+        )
+        if "bb_mid" in df.columns and not show_ma_lines:
+            fig.add_trace(
+                go.Scatter(
+                    x=df["date"],
+                    y=df["bb_mid"],
+                    name="BB 중심선 (20MA)",
+                    mode="lines",
+                    line=dict(color="rgba(245, 158, 11, 0.65)", width=1.1, dash="dot"),
+                    hovertemplate="BB 중심선: %{y:,.2f}pt<extra></extra>",
+                ),
+                secondary_y=False,
+            )
 
     # 3. 이동평균선 트레이스 (5, 20, 60, 120일선)
     if show_ma_lines:
@@ -198,6 +239,65 @@ def create_market_balance_chart(
             line_width=1.0,
             secondary_y=True,
         )
+
+    elif indicator_name == "MACD":
+        if "macd" in df.columns:
+            # 1. Oscillator (Histogram Bar)
+            if "macd_osc" in df.columns:
+                osc_colors = [
+                    meta.get("osc_pos_color", "rgba(239, 68, 68, 0.50)") if (pd.notna(val) and val >= 0)
+                    else meta.get("osc_neg_color", "rgba(59, 130, 246, 0.50)")
+                    for val in df["macd_osc"]
+                ]
+                fig.add_trace(
+                    go.Bar(
+                        x=df["date"],
+                        y=df["macd_osc"],
+                        name="Oscillator",
+                        marker=dict(color=osc_colors),
+                        hovertemplate="Oscillator: %{y:+.2f}pt<extra></extra>",
+                    ),
+                    secondary_y=True,
+                )
+
+            # 2. MACD Line (12, 26)
+            fig.add_trace(
+                go.Scatter(
+                    x=df["date"],
+                    y=df["macd"],
+                    name="MACD (12, 26)",
+                    mode="lines",
+                    line=dict(color=meta.get("line_color", "#38BDF8"), width=2.0),
+                    hovertemplate="MACD: %{y:+.2f}pt<extra></extra>",
+                ),
+                secondary_y=True,
+            )
+
+            # 3. Signal Line (9)
+            if "macd_signal" in df.columns:
+                fig.add_trace(
+                    go.Scatter(
+                        x=df["date"],
+                        y=df["macd_signal"],
+                        name="Signal (9)",
+                        mode="lines",
+                        line=dict(color=meta.get("signal_color", "#FB7185"), width=1.5, dash="dot"),
+                        hovertemplate="Signal: %{y:+.2f}pt<extra></extra>",
+                    ),
+                    secondary_y=True,
+                )
+
+            # 4. Zero Line 기준선
+            fig.add_hline(
+                y=0,
+                line_dash="dash",
+                line_color="rgba(148, 163, 184, 0.45)",
+                line_width=1.0,
+                annotation_text="기준선 (0)",
+                annotation_position="bottom right",
+                annotation_font=dict(color="#94A3B8", size=9),
+                secondary_y=True,
+            )
 
     elif indicator_name == "ADR":
         # ADR(14): 14거래일 누적 등락비율 (핵심 추세선)
@@ -440,6 +540,8 @@ def create_market_balance_chart(
         ),
         margin=dict(l=45, r=50, t=75, b=40),
         height=540,
+        bargap=0.15,
+        barmode="relative",
     )
 
     # 6. X축 설정 (비거래일(주말, 공휴일) 완전 배제 및 범주형(category) 축 적용)

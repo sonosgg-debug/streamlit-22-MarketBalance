@@ -402,6 +402,43 @@ def calculate_rsi(series: pd.Series, period: int = 20) -> pd.Series:
     return rsi.round(2)
 
 
+def calculate_macd(series: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9) -> pd.DataFrame:
+    """
+    표준 MACD(12, 26, 9) 계산:
+    - MACD Line = EMA(Close, 12) - EMA(Close, 26)
+    - Signal Line = EMA(MACD, 9)
+    - Oscillator (Histogram) = MACD Line - Signal Line
+    """
+    ema_fast = series.ewm(span=fast, adjust=False).mean()
+    ema_slow = series.ewm(span=slow, adjust=False).mean()
+    macd = (ema_fast - ema_slow).round(2)
+    macd_signal = macd.ewm(span=signal, adjust=False).mean().round(2)
+    macd_osc = (macd - macd_signal).round(2)
+    return pd.DataFrame({
+        "macd": macd,
+        "macd_signal": macd_signal,
+        "macd_osc": macd_osc
+    })
+
+
+def calculate_bollinger_bands(series: pd.Series, period: int = 20, num_std: float = 2.0) -> pd.DataFrame:
+    """
+    표준 볼린저 밴드 (20, 2) 계산:
+    - 중심선(Mid) = 20일 단순이동평균
+    - 상단선(Upper) = 중심선 + 2 * 20일 표준편차
+    - 하단선(Lower) = 중심선 - 2 * 20일 표준편차
+    """
+    bb_mid = series.rolling(window=period, min_periods=1).mean().round(2)
+    bb_std = series.rolling(window=period, min_periods=1).std().fillna(0).round(2)
+    bb_upper = (bb_mid + num_std * bb_std).round(2)
+    bb_lower = (bb_mid - num_std * bb_std).round(2)
+    return pd.DataFrame({
+        "bb_upper": bb_upper,
+        "bb_mid": bb_mid,
+        "bb_lower": bb_lower
+    })
+
+
 def calculate_adr_metrics(df_adr: pd.DataFrame, market: str = "KOSPI", period: int = 14) -> pd.DataFrame:
     """
     일자별 등락 종목 수 기반으로 ADR(1) 및 ADR(14) 계산:
@@ -670,12 +707,22 @@ def get_market_balance_dataset(market_choice: str = "코스피 (KOSPI)", force_r
     if df_price.empty:
         return pd.DataFrame()
 
-    # 2. RSI(20) 및 이동평균선(MA 5, 20, 60, 120) 계산 (전체 시계열 기준 선행 계산)
+    # 2. RSI(20) 및 이동평균선(MA 5, 20, 60, 120), MACD(12, 26, 9), 볼린저밴드(20, 2) 계산
     df_price["rsi_20"] = calculate_rsi(df_price["close"], period=20)
     df_price["ma5"] = df_price["close"].rolling(window=5, min_periods=1).mean().round(2)
     df_price["ma20"] = df_price["close"].rolling(window=20, min_periods=1).mean().round(2)
     df_price["ma60"] = df_price["close"].rolling(window=60, min_periods=1).mean().round(2)
     df_price["ma120"] = df_price["close"].rolling(window=120, min_periods=1).mean().round(2)
+
+    df_macd = calculate_macd(df_price["close"], fast=12, slow=26, signal=9)
+    df_price["macd"] = df_macd["macd"]
+    df_price["macd_signal"] = df_macd["macd_signal"]
+    df_price["macd_osc"] = df_macd["macd_osc"]
+
+    df_bb = calculate_bollinger_bands(df_price["close"], period=20, num_std=2.0)
+    df_price["bb_upper"] = df_bb["bb_upper"]
+    df_price["bb_mid"] = df_bb["bb_mid"]
+    df_price["bb_lower"] = df_bb["bb_lower"]
 
     # 3. PER, PBR 펀더멘털 병합
     df_fund = get_fundamentals_data(market=market, force_refresh=force_refresh)
@@ -710,7 +757,8 @@ def get_market_balance_dataset(market_choice: str = "코스피 (KOSPI)", force_r
     ext_cols = [
         "deposit_jo", "credit_jo", "credit_ratio", "vkospi",
         "foreign_daily_eok", "inst_daily_eok", "personal_daily_eok",
-        "foreign_cum_jo", "inst_cum_jo", "above_200ma"
+        "foreign_cum_jo", "inst_cum_jo", "above_200ma",
+        "macd", "macd_signal", "macd_osc", "bb_upper", "bb_mid", "bb_lower"
     ]
     for c in ext_cols:
         if c not in df_merged.columns:

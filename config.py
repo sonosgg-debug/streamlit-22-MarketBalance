@@ -50,7 +50,7 @@ KRX_INDEX_CODE_MAP = {
 }
 
 # 지표 옵션
-INDICATOR_OPTIONS = ["PER", "PBR", "RSI", "ADR", "예탁금&신용", "VKOSPI", "외인&기관수급", "200일선상회"]
+INDICATOR_OPTIONS = ["PER", "PBR", "RSI", "MACD", "ADR", "VKOSPI", "예탁금&신용", "외인&기관수급", "200일선상회"]
 DEFAULT_INDICATOR = "PER"
 
 # 기간 선택 프리셋 (8개 옵션: 1W, 2W, 1M, 3M, 6M, 1Y, YTD, MAX)
@@ -93,6 +93,20 @@ INDICATOR_META = {
         "oversold": 30.0,
         "midline": 50.0,
         "has_bands": True,
+        "is_breadth": False,
+    },
+    "MACD": {
+        "name": "MACD (이동평균수렴확산, 12, 26, 9)",
+        "short_name": "MACD",
+        "chart_label": "MACD (pt)",
+        "unit": "pt",
+        "format": "{:+.2f}pt",
+        "desc": "단기 지수이동평균(12일)과 장기 지수이동평균(26일)의 차이(MACD선), MACD의 9일 시그널선, 그리고 둘의 차이인 오실레이터(히스토그램)로 구성된 대표적인 추세 추종 모멘텀 지표입니다. 오실레이터가 0선 위로 상승하면 매수(골든크로스), 0선 아래로 하락하면 매도(데드크로스) 신호로 해석합니다.",
+        "line_color": "#38BDF8",       # Sky Blue (MACD Line)
+        "signal_color": "#FB7185",     # Coral Rose (Signal Line)
+        "osc_pos_color": "rgba(239, 68, 68, 0.50)",  # Red (Positive Oscillator)
+        "osc_neg_color": "rgba(59, 130, 246, 0.50)",  # Blue (Negative Oscillator)
+        "has_bands": False,
         "is_breadth": False,
     },
     "ADR": {

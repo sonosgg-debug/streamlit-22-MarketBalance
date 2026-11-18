@@ -210,6 +210,9 @@ st.markdown(
 expected_latest_day = get_latest_expected_trading_day()
 expected_date_obj = datetime.datetime.strptime(expected_latest_day, "%Y-%m-%d").date()
 
+if "selected_indicator" not in st.session_state:
+    st.session_state["selected_indicator"] = DEFAULT_INDICATOR
+
 if "selected_period" not in st.session_state:
     st.session_state["selected_period"] = DEFAULT_PERIOD
 
@@ -277,15 +280,46 @@ with st.sidebar:
 
     st.markdown("<hr style='border: 0; height: 1px; background-color: #334155; margin: 16px 0;'>", unsafe_allow_html=True)
 
-    # [3단계] 지표 선택 (라디오 가로 배치)
+    # [3단계] 지표 선택 (3행 인터랙티브 버튼 그리드)
     st.markdown("<div style='font-size: 0.95rem; font-weight: 700; color: #e2e8f0; margin-bottom: 6px;'>📊 지표 선택</div>", unsafe_allow_html=True)
-    selected_indicator = st.radio(
-        "지표 선택",
-        INDICATOR_OPTIONS,
-        index=0,
-        horizontal=True,
-        label_visibility="collapsed"
-    )
+    
+    current_ind = st.session_state.get("selected_indicator", DEFAULT_INDICATOR)
+
+    # 제1행: PER, PBR, RSI, MACD (4열)
+    row1_inds = ["PER", "PBR", "RSI", "MACD"]
+    cols_ind1 = st.columns(4, gap="small")
+    for idx, ind in enumerate(row1_inds):
+        with cols_ind1[idx]:
+            is_act = (current_ind == ind)
+            btn_t = "primary" if is_act else "secondary"
+            if st.button(ind, key=f"btn_ind_{ind}", type=btn_t, use_container_width=True):
+                st.session_state["selected_indicator"] = ind
+                st.rerun()
+
+    # 제2행: ADR, VKOSPI, 예탁금&신용 (3열)
+    row2_inds = ["ADR", "VKOSPI", "예탁금&신용"]
+    cols_ind2 = st.columns(3, gap="small")
+    for idx, ind in enumerate(row2_inds):
+        with cols_ind2[idx]:
+            is_act = (current_ind == ind)
+            btn_t = "primary" if is_act else "secondary"
+            if st.button(ind, key=f"btn_ind_{ind}", type=btn_t, use_container_width=True):
+                st.session_state["selected_indicator"] = ind
+                st.rerun()
+
+    # 제3행: 외인&기관수급, 200일선 상회 (2열)
+    row3_inds = ["외인&기관수급", "200일선상회"]
+    cols_ind3 = st.columns(2, gap="small")
+    for idx, ind in enumerate(row3_inds):
+        with cols_ind3[idx]:
+            is_act = (current_ind == ind)
+            btn_t = "primary" if is_act else "secondary"
+            lbl = "외인·기관수급" if ind == "외인&기관수급" else "200일선 상회"
+            if st.button(lbl, key=f"btn_ind_{ind}", type=btn_t, use_container_width=True):
+                st.session_state["selected_indicator"] = ind
+                st.rerun()
+
+    selected_indicator = st.session_state["selected_indicator"]
 
     st.markdown("<hr style='border: 0; height: 1px; background-color: #334155; margin: 16px 0;'>", unsafe_allow_html=True)
 
@@ -345,11 +379,20 @@ with st.sidebar:
 
     st.markdown("<hr style='border: 0; height: 1px; background-color: #334155; margin: 14px 0 10px 0;'>", unsafe_allow_html=True)
 
-    # [6단계] 차트 옵션 설정 (이동평균선 및 로그 스케일 토글)
+    # [6단계] 차트 옵션 설정 (볼린저밴드, 이동평균선, 로그 스케일)
     st.markdown("<div style='font-size: 0.95rem; font-weight: 700; color: #e2e8f0; margin-bottom: 6px;'>📐 차트 표시 옵션</div>", unsafe_allow_html=True)
+    
+    show_bb_bands = st.checkbox(
+        "볼린저밴드 (Bollinger Bands, 20, 2)",
+        value=st.session_state.get("show_bb_bands", True),
+        help="주가지수 일봉 캔들차트 위에 20일 이동평균선 및 ±2 표준편차 상·하단 변동성 밴드를 오버레이합니다.",
+        key="chk_bb_bands"
+    )
+    st.session_state["show_bb_bands"] = show_bb_bands
+
     show_ma_lines = st.checkbox(
         "이동평균선 (5, 20, 60, 120일선)",
-        value=st.session_state.get("show_ma_lines", True),
+        value=st.session_state.get("show_ma_lines", False),
         help="주가지수 일봉 캔들차트 위에 5일(단기), 20일(생명선), 60일(수급선), 120일(경기선) 이동평균선을 오버레이합니다.",
         key="chk_ma_lines"
     )
@@ -380,7 +423,7 @@ with st.sidebar:
 # 4. 데이터 로딩 (캐시 바인딩 및 가이드 04, 05 준수)
 # ==============================================================================
 force_refresh = st.session_state.pop("force_refresh", False)
-DATASET_SCHEMA_VERSION = "20261104_v9_auto_incremental_sync"
+DATASET_SCHEMA_VERSION = "20261118_v10_macd_bollinger"
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def load_cached_dataset(market_choice: str, target_date_key: str, schema_ver: str = DATASET_SCHEMA_VERSION, force_refresh: bool = False) -> pd.DataFrame:
@@ -393,7 +436,8 @@ with st.spinner("한국 증시 밸런스 데이터를 수집 및 분석하는 �
 # 확장 컬럼 존재 여부 자가 치유(Self-Healing) 방어 코드
 REQUIRED_EXT_COLS = [
     "credit_jo", "deposit_jo", "vkospi", "foreign_cum_jo", "inst_cum_jo",
-    "above_200ma", "foreign_daily_eok", "inst_daily_eok", "ma5", "ma20", "ma60", "ma120"
+    "above_200ma", "foreign_daily_eok", "inst_daily_eok", "ma5", "ma20", "ma60", "ma120",
+    "macd", "macd_signal", "macd_osc", "bb_upper", "bb_mid", "bb_lower"
 ]
 if df_raw.empty or any(col not in df_raw.columns for col in REQUIRED_EXT_COLS):
     st.cache_data.clear()
@@ -537,6 +581,35 @@ elif selected_indicator == "RSI":
             status_text = "⚪ 상승 모멘텀 우세 (50 상회)"
         else:
             status_text = "⚪ 하락 모멘텀 우세 (50 하회)"
+    else:
+        val_str = "N/A"
+        val_sub_html = "<span class='text-neutral'>데이터 확인 중</span>"
+        status_text = "데이터 확인 중"
+
+elif selected_indicator == "MACD":
+    row_l, row_p = get_valid_indicator_rows(df_filtered, ["macd", "macd_signal", "macd_osc"], df_raw)
+    if row_l is not None:
+        val_macd = row_l["macd"]
+        val_sig = row_l["macd_signal"]
+        val_osc = row_l["macd_osc"]
+        val_str = f"MACD {val_macd:+.1f} / Sig {val_sig:+.1f}pt"
+        
+        prev_osc = row_p["macd_osc"] if (row_p is not None and pd.notna(row_p.get("macd_osc"))) else 0.0
+        osc_diff = val_osc - prev_osc
+        osc_sign = "+" if osc_diff > 0 else ""
+        osc_badge = "🔴 골든크로스" if val_osc >= 0 else "🔵 데드크로스"
+        date_badge = f" <span style='font-size:0.75rem; color:#94a3b8;'>({row_l['date']})</span>" if row_l["date"] != latest_row["date"] else ""
+        val_sub_html = f"<span class='text-neutral'>오실레이터: <b>{val_osc:+.1f}pt</b> ({osc_badge}, 전일비 {osc_sign}{osc_diff:.1f}pt){date_badge}</span>"
+
+        # 상태 진단 (Balance)
+        if val_osc >= 0 and osc_diff > 0:
+            status_text = "🔴 상승 모멘텀 가속 (골든크로스 확장)"
+        elif val_osc >= 0 and osc_diff <= 0:
+            status_text = "⚪ 상승 탄력 둔화 (오실레이터 축소, 조정 주의)"
+        elif val_osc < 0 and osc_diff < 0:
+            status_text = "🔵 하락 모멘텀 가속 (데드크로스 확장)"
+        else:
+            status_text = "🟢 하락세 진정 (오실레이터 반등, 저점 다지기)"
     else:
         val_str = "N/A"
         val_sub_html = "<span class='text-neutral'>데이터 확인 중</span>"
@@ -728,6 +801,7 @@ with kpi4:
         "PER": ("per", "배", ""),
         "PBR": ("pbr", "배", ""),
         "RSI": ("rsi_20", "pt", ""),
+        "MACD": ("macd_osc", "pt", "오실레이터 "),
         "ADR": ("adr_14", "%", "ADR(14) "),
         "예탁금&신용": ("credit_jo", "조", "신용 "),
         "VKOSPI": ("vkospi", "pt", ""),
@@ -784,10 +858,11 @@ with kpi4:
 
 # (5) [가이드 01 Level 2] 본문 메인 섹터 제목 (차트)
 scale_badge = " <span style='font-size: 0.80rem; background-color: #334155; color: #38bdf8; padding: 2px 8px; border-radius: 4px; font-weight: 600; vertical-align: middle; margin-left: 6px;'>로그 스케일</span>" if use_log_scale else ""
+bb_badge = " <span style='font-size: 0.80rem; background-color: #1e293b; border: 1px solid #334155; color: #94a3b8; padding: 2px 8px; border-radius: 4px; font-weight: 600; vertical-align: middle; margin-left: 6px;'>볼린저밴드 (20, 2)</span>" if show_bb_bands else ""
 ma_badge = " <span style='font-size: 0.80rem; background-color: #1e293b; border: 1px solid #334155; color: #f59e0b; padding: 2px 8px; border-radius: 4px; font-weight: 600; vertical-align: middle; margin-left: 6px;'>이평선 (5, 20, 60, 120)</span>" if show_ma_lines else ""
 st.markdown(
     f"<div style='font-size: 1.20rem; color: #8AB4F8; font-weight: 700; margin: 20px 0 10px 0;'>"
-    f"📈 {selected_market} 일봉 & {meta.get('short_name', selected_indicator)} 비교 차트{scale_badge}{ma_badge}"
+    f"📈 {selected_market} 일봉 & {meta.get('short_name', selected_indicator)} 비교 차트{scale_badge}{bb_badge}{ma_badge}"
     f"</div>",
     unsafe_allow_html=True
 )
@@ -798,7 +873,8 @@ fig = create_market_balance_chart(
     market_name=selected_market,
     indicator_name=selected_indicator,
     use_log_scale=use_log_scale,
-    show_ma_lines=show_ma_lines
+    show_ma_lines=show_ma_lines,
+    show_bb_bands=show_bb_bands,
 )
 st.plotly_chart(fig, use_container_width=True)
 
@@ -822,6 +898,10 @@ with st.expander(f"💡 {meta.get('name', selected_indicator)} 지표 해석 및
     elif selected_indicator == "RSI":
         st.markdown("""
         - **투자 전략 관점**: RSI(20)은 단기 노이즈를 완화하고 중기 추세를 읽기에 가장 적합한 주기입니다. 70 이상에서는 추격 매수를 자제하고 이익 실현을 고려하며, 30 이하로 급락했을 때는 투매(Panic Selling) 이후 기술적 반등을 노리는 전략이 유효합니다.
+        </div>""", unsafe_allow_html=True)
+    elif selected_indicator == "MACD":
+        st.markdown("""
+        - **투자 전략 관점**: MACD 선이 Signal 선을 상향 돌파(골든크로스)하며 오실레이터가 양수로 전환될 때를 추세적 상승 국면 진입으로, 하향 돌파(데드크로스)하며 음수로 전환될 때를 하락 국면 진입으로 해석합니다. 특히 오실레이터의 크기가 정점을 찍고 줄어드는 변곡점은 조기 분할 매매 타이밍을 포착하는 데 유용합니다.
         </div>""", unsafe_allow_html=True)
     elif selected_indicator == "ADR":
         st.markdown("""
@@ -894,7 +974,13 @@ rename_dict = {
     "vkospi": "VKOSPI (pt)",
     "foreign_cum_jo": "외인 누적순매수 (조 원)",
     "inst_cum_jo": "기관 누적순매수 (조 원)",
-    "above_200ma": "200일선 상회비율 (%)"
+    "above_200ma": "200일선 상회비율 (%)",
+    "macd": "MACD (pt)",
+    "macd_signal": "Signal (pt)",
+    "macd_osc": "Oscillator (pt)",
+    "bb_upper": "BB 상단 (pt)",
+    "bb_mid": "BB 중심선 (pt)",
+    "bb_lower": "BB 하단 (pt)"
 }
 
 # 기본 공통 컬럼: 거래일자, 종가
@@ -905,6 +991,8 @@ elif selected_indicator == "PBR":
     indicator_cols = ["pbr", "per", "div_yield"]
 elif selected_indicator == "RSI":
     indicator_cols = ["rsi_20"]
+elif selected_indicator == "MACD":
+    indicator_cols = ["macd", "macd_signal", "macd_osc"]
 elif selected_indicator == "ADR":
     indicator_cols = ["adv", "dec", "adr_1", "adr_14"]
 elif selected_indicator == "예탁금&신용":
@@ -918,7 +1006,7 @@ elif selected_indicator == "200일선상회":
 else:
     indicator_cols = []
 
-all_possible_cols = ["rsi_20", "per", "pbr", "adr_14", "deposit_jo", "credit_jo", "vkospi", "foreign_cum_jo", "inst_cum_jo", "above_200ma"]
+all_possible_cols = ["macd", "macd_signal", "macd_osc", "rsi_20", "per", "pbr", "adr_14", "deposit_jo", "credit_jo", "vkospi", "foreign_cum_jo", "inst_cum_jo", "above_200ma"]
 remaining_cols = [c for c in all_possible_cols if c not in indicator_cols and c not in base_cols]
 cols_to_show = base_cols + indicator_cols + remaining_cols
 existing_cols = [c for c in cols_to_show if c in df_table.columns]
